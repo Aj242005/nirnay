@@ -26,6 +26,12 @@ docker-compose.override.yml
 *.tmp
 *.bak
 
+# ---------- Node / Turbo ----------
+node_modules/
+.turbo/
+dist/
+package-lock.json
+
 # ---------- Gemini / AI tooling ----------
 .gemini/
 .antigravityignore

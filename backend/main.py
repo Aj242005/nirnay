@@ -18,7 +18,9 @@ from sqlalchemy import func
 from db.database import engine, get_db, Base
 from db.models import Document, EvaluationVerdict, OfficerAction
 from routers.auth import AuthMiddleware
+from routers.rbac import require_role, require_permission
 from routers import ingestion, extraction, credibility, evaluation, review, notification
+from routers import bidder_portal
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -46,10 +48,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS
+# CORS — allow both officer (5173) and bidder (5174) dev servers
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "*",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -58,13 +64,16 @@ app.add_middleware(
 # Auth middleware
 app.add_middleware(AuthMiddleware)
 
-# Register routers
+# ── Officer-side routers ──────────────────────────────────────
 app.include_router(ingestion.router)
 app.include_router(extraction.router)
 app.include_router(credibility.router)
 app.include_router(evaluation.router)
 app.include_router(review.router)
 app.include_router(notification.router)
+
+# ── Bidder-side router ────────────────────────────────────────
+app.include_router(bidder_portal.router)
 
 
 @app.get("/healthz")
@@ -77,9 +86,24 @@ async def readyz():
     return {"status": "ready"}
 
 
+# ── Role info endpoint (used by both portals) ────────────────
+@app.get("/api/auth/me")
+async def get_current_user(request: Request):
+    """Return the authenticated user's identity and role."""
+    return {
+        "uid": getattr(request.state, "user_id", None),
+        "email": getattr(request.state, "email", None),
+        "role": getattr(request.state, "role", None),
+    }
+
+
 @app.get("/api/dashboard/summary")
-async def dashboard_summary(request: Request, db: Session = Depends(get_db)):
-    """Dashboard summary — auth-guarded but not role-restricted."""
+async def dashboard_summary(
+    request: Request,
+    db: Session = Depends(get_db),
+    _role: str = Depends(require_permission("dashboard:read")),
+):
+    """Dashboard summary — officer/admin only."""
     officer_id = getattr(request.state, "officer_id", None)
 
     active_tenders = db.query(func.count(func.distinct(Document.tender_id))).filter(
@@ -115,7 +139,11 @@ async def dashboard_summary(request: Request, db: Session = Depends(get_db)):
 
 
 @app.get("/api/dashboard/tenders")
-async def list_tenders(request: Request, db: Session = Depends(get_db)):
+async def list_tenders(
+    request: Request,
+    db: Session = Depends(get_db),
+    _role: str = Depends(require_permission("tenders:read")),
+):
     """List all tenders with their status, bidder count, and anomaly count."""
     # Find all unique tender IDs from documents
     tender_ids = db.query(Document.tender_id).filter(Document.doc_type == "tender").distinct().all()
