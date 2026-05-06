@@ -37,10 +37,16 @@ const LoginPage: React.FC = () => {
                 </p>
               </div>
 
+              {!import.meta.env.VITE_FIREBASE_API_KEY && (
+                <div className="p-3 text-xs text-destructive-foreground bg-destructive rounded-lg border border-destructive/50 font-medium">
+                  Missing Firebase Configuration. Please add VITE_FIREBASE_API_KEY and other credentials to your .env file.
+                </div>
+              )}
+
               <Button
                 className="w-full h-12 text-base gap-3"
                 onClick={signInWithGoogle}
-                disabled={loading}
+                disabled={loading || !import.meta.env.VITE_FIREBASE_API_KEY}
               >
                 Sign in with Google
                 <ArrowRight className="h-4 w-4" />
