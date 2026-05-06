@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from db.database import get_db
-from db.models import EvaluationVerdict, BidderOverallVerdict, TenderCriterion, BidderExtractedValue
+from db.models import Document, EvaluationVerdict, BidderOverallVerdict, ProposalStatus, TenderCriterion, BidderExtractedValue
 from services.evaluation.engine import EvaluationEngine
 
 logger = logging.getLogger(__name__)
@@ -16,6 +16,31 @@ _evaluation_jobs = {}
 async def run_evaluation(tender_id: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     job_id = str(uuid.uuid4())
     _evaluation_jobs[tender_id] = {"job_id": job_id, "status": "processing"}
+    bidder_ids = db.query(Document.bidder_id).filter(
+        Document.tender_id == tender_id,
+        Document.doc_type == "bidder",
+        Document.bidder_id.isnot(None),
+    ).distinct().all()
+    for (bidder_id,) in bidder_ids:
+        proposal = db.query(ProposalStatus).filter(
+            ProposalStatus.tender_id == tender_id,
+            ProposalStatus.bidder_id == bidder_id,
+        ).first()
+        if proposal:
+            proposal.status = "under_evaluation"
+        else:
+            doc_count = db.query(Document).filter(
+                Document.tender_id == tender_id,
+                Document.bidder_id == bidder_id,
+                Document.doc_type == "bidder",
+            ).count()
+            db.add(ProposalStatus(
+                tender_id=tender_id,
+                bidder_id=bidder_id,
+                status="under_evaluation",
+                document_count=doc_count,
+            ))
+    db.commit()
     background_tasks.add_task(_run_eval, tender_id, job_id)
     return {"job_id": job_id, "status": "queued"}
 
@@ -56,6 +81,29 @@ def _run_eval(tender_id: str, job_id: str):
     db = SessionLocal()
     try:
         EvaluationEngine().evaluate_tender(tender_id, db)
+        overall = db.query(BidderOverallVerdict).filter(
+            BidderOverallVerdict.tender_id == tender_id,
+            BidderOverallVerdict.supersedes_id.is_(None),
+        ).all()
+        for verdict in overall:
+            proposal = db.query(ProposalStatus).filter(
+                ProposalStatus.tender_id == tender_id,
+                ProposalStatus.bidder_id == verdict.bidder_id,
+            ).first()
+            if not proposal:
+                doc_count = db.query(Document).filter(
+                    Document.tender_id == tender_id,
+                    Document.bidder_id == verdict.bidder_id,
+                    Document.doc_type == "bidder",
+                ).count()
+                proposal = ProposalStatus(
+                    tender_id=tender_id,
+                    bidder_id=verdict.bidder_id,
+                    document_count=doc_count,
+                )
+                db.add(proposal)
+            proposal.status = "requires_human_review" if verdict.overall_verdict == "MANUAL_REVIEW" else "evaluated"
+        db.commit()
         _evaluation_jobs[tender_id] = {"job_id": job_id, "status": "complete"}
     except Exception as e:
         logger.error(f"Evaluation failed: {e}")

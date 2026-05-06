@@ -1,0 +1,21 @@
+{
+  "name": "nirnay",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "dev:officer": "turbo dev --filter=@nirnay/officer-portal",
+    "dev:bidder": "turbo dev --filter=@nirnay/bidder-portal",
+    "dev:landing": "turbo dev --filter=@nirnay/landing-page",
+    "dev:all": "turbo dev --filter=@nirnay/officer-portal --filter=@nirnay/bidder-portal --filter=@nirnay/landing-page"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.0"
+  },
+  "packageManager": "npm@11.12.1"
+}

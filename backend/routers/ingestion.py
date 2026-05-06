@@ -11,7 +11,7 @@ from fastapi import APIRouter, UploadFile, File, Form, BackgroundTasks, Depends,
 from sqlalchemy.orm import Session
 
 from db.database import get_db
-from db.models import Document, DocumentPage, TenderCriterion
+from db.models import Document, DocumentPage, ProposalStatus, TenderCriterion, TenderWorkflow
 from models.bidder import DocumentUploadResponse, DocumentStatusResponse, PageContent
 from storage.local_storage import get_storage_backend
 from services.ocr.pdf_extractor import extract_pdf
@@ -120,6 +120,37 @@ async def _handle_upload(
         status="uploaded",
     )
     db.add(doc)
+    if doc_type == "tender":
+        workflow = db.query(TenderWorkflow).filter(TenderWorkflow.tender_id == tender_id).first()
+        if workflow:
+            workflow.department_id = department_id
+            workflow.lifecycle_status = "processing"
+        else:
+            db.add(TenderWorkflow(
+                tender_id=tender_id,
+                department_id=department_id,
+                lifecycle_status="processing",
+            ))
+    elif bidder_id:
+        proposal = db.query(ProposalStatus).filter(
+            ProposalStatus.tender_id == tender_id,
+            ProposalStatus.bidder_id == bidder_id,
+        ).first()
+        doc_count = db.query(Document).filter(
+            Document.tender_id == tender_id,
+            Document.bidder_id == bidder_id,
+            Document.doc_type == "bidder",
+        ).count()
+        if proposal:
+            proposal.status = "pending"
+            proposal.document_count = doc_count
+        else:
+            db.add(ProposalStatus(
+                tender_id=tender_id,
+                bidder_id=bidder_id,
+                status="pending",
+                document_count=doc_count,
+            ))
     db.commit()
 
     # Enqueue background processing
@@ -168,6 +199,10 @@ def process_document(doc_id: str):
         except Exception as e:
             doc.status = "error"
             doc.error_message = f"OCR failed: {str(e)}"
+            if doc.doc_type == "tender":
+                workflow = db.query(TenderWorkflow).filter(TenderWorkflow.tender_id == doc.tender_id).first()
+                if workflow:
+                    workflow.lifecycle_status = "error"
             db.commit()
             return
 
@@ -239,11 +274,25 @@ def process_document(doc_id: str):
             scorer.score(doc.id, storage_path, doc.mime_type, db)
 
             doc.status = "extracted"
+            if doc.doc_type == "tender":
+                workflow = db.query(TenderWorkflow).filter(TenderWorkflow.tender_id == doc.tender_id).first()
+                if workflow:
+                    workflow.lifecycle_status = "active"
+                else:
+                    db.add(TenderWorkflow(
+                        tender_id=doc.tender_id,
+                        department_id=doc.department_id,
+                        lifecycle_status="active",
+                    ))
             db.commit()
 
         except Exception as e:
             doc.status = "error"
             doc.error_message = f"Extraction failed: {str(e)}"
+            if doc.doc_type == "tender":
+                workflow = db.query(TenderWorkflow).filter(TenderWorkflow.tender_id == doc.tender_id).first()
+                if workflow:
+                    workflow.lifecycle_status = "error"
             db.commit()
             logger.error(f"Extraction failed for {doc_id}: {e}")
 

@@ -75,6 +75,32 @@ class TenderCriterion(Base):
     extracted_values = relationship("BidderExtractedValue", back_populates="criterion")
 
 
+class TenderWorkflow(Base):
+    __tablename__ = "tender_workflows"
+
+    tender_id = Column(String, primary_key=True)
+    department_id = Column(String, nullable=False)
+    lifecycle_status = Column(String, nullable=False, default="processing")
+    # processing | active | inactive | completed | error
+    selected_bidder_id = Column(String, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class ProposalStatus(Base):
+    __tablename__ = "proposal_statuses"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    tender_id = Column(String, nullable=False, index=True)
+    bidder_id = Column(String, nullable=False, index=True)
+    status = Column(String, nullable=False, default="pending")
+    # pending | under_evaluation | requires_human_review | evaluated | accepted | rejected
+    document_count = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+    created_at = Column(DateTime, default=utcnow)
+
+
 class BidderExtractedValue(Base):
     __tablename__ = "bidder_extracted_values"
 
