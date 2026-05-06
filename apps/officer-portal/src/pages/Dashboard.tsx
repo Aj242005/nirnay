@@ -33,8 +33,9 @@ const OfficerDashboard: React.FC = () => {
   useEffect(() => {
     api.get('/dashboard/summary')
       .then((res) => setSummary(res.data))
-      .catch(() => {
-        setSummary({ active_tenders: 12, pending_review_count: 5, recent_activity: [] });
+      .catch((err) => {
+        console.error('Failed to fetch summary:', err);
+        setSummary(null);
       })
       .finally(() => setLoading(false));
   }, []);

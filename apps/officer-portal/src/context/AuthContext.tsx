@@ -43,15 +43,7 @@ export const AuthProvider: React.FC<{ children: ReactNode; requiredRole: UserRol
     const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
 
     if (!apiKey || !projectId) {
-      console.warn('Firebase config not provided — running in demo mode');
-      // Demo user for development
-      setUser({
-        uid: 'demo-officer-001',
-        email: 'officer@nirnay.gov.in',
-        displayName: 'Demo Officer',
-        role: requiredRole === 'bidder' ? 'bidder' : 'officer',
-      });
-      setToken('demo-token');
+      console.error('Firebase config not provided. Auth will fail.');
       setLoading(false);
       return;
     }

@@ -17,10 +17,10 @@ const BidderDashboard: React.FC = () => {
   useEffect(() => {
     api.get('/bidder/dashboard')
       .then((r) => setDash(r.data))
-      .catch(() => setDash({
-        total_submissions: 6, tenders_applied: 3,
-        eligible_count: 2, rejected_count: 0, review_count: 1,
-      }));
+      .catch((err) => {
+        console.error('Failed to fetch bidder dashboard:', err);
+        setDash(null);
+      });
   }, []);
 
   const stats = [
