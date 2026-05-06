@@ -63,10 +63,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               console.warn('Non-bidder user tried to access bidder portal');
               setUser(null);
               setToken(null);
+              localStorage.removeItem('nirnay_token');
               setLoading(false);
               return;
             }
 
+            localStorage.setItem('nirnay_token', idToken);
             setUser({
               uid: fbUser.uid,
               email: fbUser.email || '',
@@ -78,11 +80,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           } else {
             setUser(null);
             setToken(null);
+            localStorage.removeItem('nirnay_token');
           }
           setLoading(false);
         });
       } catch (e) {
         console.warn('Firebase init failed:', e);
+        localStorage.removeItem('nirnay_token');
         setLoading(false);
       }
     };
@@ -105,6 +109,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
     setUser(null);
     setToken(null);
+    localStorage.removeItem('nirnay_token');
   };
 
   return (

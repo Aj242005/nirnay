@@ -70,6 +70,7 @@ export const AuthProvider: React.FC<{ children: ReactNode; requiredRole: UserRol
             const idToken = await fbUser.getIdToken();
             const tokenResult = await fbUser.getIdTokenResult();
             const role = (tokenResult.claims.role as UserRole) || 'officer';
+            localStorage.setItem('nirnay_token', idToken);
             setUser({
               uid: fbUser.uid,
               email: fbUser.email || '',
@@ -81,11 +82,13 @@ export const AuthProvider: React.FC<{ children: ReactNode; requiredRole: UserRol
           } else {
             setUser(null);
             setToken(null);
+            localStorage.removeItem('nirnay_token');
           }
           setLoading(false);
         });
       } catch (e) {
         console.warn('Firebase init failed:', e);
+        localStorage.removeItem('nirnay_token');
         setLoading(false);
       }
     };
@@ -108,6 +111,7 @@ export const AuthProvider: React.FC<{ children: ReactNode; requiredRole: UserRol
     }
     setUser(null);
     setToken(null);
+    localStorage.removeItem('nirnay_token');
   };
 
   return (

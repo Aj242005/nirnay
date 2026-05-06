@@ -10,13 +10,13 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Depends, Request
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from db.database import engine, get_db, Base
-from db.models import Document, EvaluationVerdict, OfficerAction
+from db.models import Document, EvaluationVerdict, OfficerAction, ProposalStatus, TenderWorkflow
 from routers.auth import AuthMiddleware
 from routers.rbac import require_role, require_permission
 from routers import ingestion, extraction, credibility, evaluation, review, notification
@@ -106,9 +106,15 @@ async def dashboard_summary(
     """Dashboard summary — officer/admin only."""
     officer_id = getattr(request.state, "officer_id", None)
 
-    active_tenders = db.query(func.count(func.distinct(Document.tender_id))).filter(
-        Document.status != "error"
+    workflow_active = db.query(func.count(TenderWorkflow.tender_id)).filter(
+        TenderWorkflow.lifecycle_status == "active"
     ).scalar() or 0
+    workflow_ids = {row[0] for row in db.query(TenderWorkflow.tender_id).all()}
+    extracted_without_workflow = db.query(Document.tender_id).filter(
+        Document.doc_type == "tender",
+        Document.status == "extracted",
+    ).distinct().all()
+    active_tenders = workflow_active + sum(1 for (t_id,) in extracted_without_workflow if t_id not in workflow_ids)
 
     pending_review_count = db.query(func.count(EvaluationVerdict.verdict_id)).filter(
         EvaluationVerdict.verdict == "MANUAL_REVIEW",
@@ -155,6 +161,8 @@ async def list_tenders(
         tender_doc = db.query(Document).filter(Document.tender_id == t_id, Document.doc_type == "tender").first()
         status = tender_doc.status if tender_doc else "unknown"
         department = tender_doc.department_id if tender_doc else "unknown"
+        workflow = db.query(TenderWorkflow).filter(TenderWorkflow.tender_id == t_id).first()
+        lifecycle_status = workflow.lifecycle_status if workflow else ("active" if status == "extracted" else "processing")
         
         # Get bidder count
         bidder_count = db.query(func.count(func.distinct(Document.bidder_id))).filter(
@@ -180,6 +188,8 @@ async def list_tenders(
             "tender_id": t_id,
             "department_id": department,
             "status": overall_status,
+            "lifecycle_status": lifecycle_status,
+            "selected_bidder_id": workflow.selected_bidder_id if workflow else None,
             "bidder_count": bidder_count,
             "anomaly_count": anomaly_count,
             "critical_anomalies": critical_anomalies,
@@ -187,3 +197,68 @@ async def list_tenders(
         })
         
     return {"tenders": sorted(tenders, key=lambda x: x["created_at"] or "", reverse=True)}
+
+
+@app.patch("/api/dashboard/tenders/{tender_id}/status")
+async def update_tender_status(
+    tender_id: str,
+    body: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+    _role: str = Depends(require_permission("tenders:update")),
+):
+    lifecycle_status = body.get("status")
+    if lifecycle_status not in {"active", "inactive"}:
+        raise HTTPException(status_code=400, detail="Status must be active or inactive")
+
+    tender_doc = db.query(Document).filter(
+        Document.tender_id == tender_id,
+        Document.doc_type == "tender",
+    ).first()
+    if not tender_doc:
+        raise HTTPException(status_code=404, detail="Tender not found")
+    if lifecycle_status == "active" and tender_doc.status != "extracted":
+        raise HTTPException(status_code=400, detail="Tender must finish extraction before it can become active")
+
+    workflow = db.query(TenderWorkflow).filter(TenderWorkflow.tender_id == tender_id).first()
+    if not workflow:
+        workflow = TenderWorkflow(
+            tender_id=tender_id,
+            department_id=tender_doc.department_id,
+            lifecycle_status=lifecycle_status,
+        )
+        db.add(workflow)
+    else:
+        workflow.lifecycle_status = lifecycle_status
+
+    db.add(OfficerAction(
+        officer_id=getattr(request.state, "officer_id", "unknown"),
+        officer_email=getattr(request.state, "email", "unknown"),
+        action_type="set_tender_status",
+        target_id=tender_id,
+        comment=f"Tender set to {lifecycle_status}",
+    ))
+    db.commit()
+    return {"tender_id": tender_id, "lifecycle_status": workflow.lifecycle_status}
+
+
+@app.get("/api/dashboard/tenders/{tender_id}/proposals")
+async def list_tender_proposals(
+    tender_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    _role: str = Depends(require_permission("submissions:read")),
+):
+    proposals = db.query(ProposalStatus).filter(ProposalStatus.tender_id == tender_id).all()
+    return {
+        "tender_id": tender_id,
+        "proposals": [
+            {
+                "bidder_id": p.bidder_id,
+                "status": p.status,
+                "document_count": p.document_count,
+                "updated_at": str(p.updated_at) if p.updated_at else None,
+            }
+            for p in proposals
+        ],
+    }

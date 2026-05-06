@@ -88,6 +88,8 @@ export interface Tender {
   tender_id: string;
   department_id: string;
   status: string;
+  lifecycle_status?: "processing" | "active" | "inactive" | "completed" | "error";
+  selected_bidder_id?: string | null;
   bidder_count: number;
   anomaly_count: number;
   critical_anomalies: number;
@@ -209,6 +211,14 @@ export interface BidderSubmission {
   documents: Document[];
   status: "draft" | "submitted" | "under_review" | "evaluated";
   submitted_at: string | null;
+}
+
+export interface ProposalStatus {
+  bidder_id: string;
+  tender_id?: string;
+  status: "pending" | "under_evaluation" | "requires_human_review" | "evaluated" | "accepted" | "rejected";
+  document_count: number;
+  updated_at: string | null;
 }
 
 export interface BidderNotification {

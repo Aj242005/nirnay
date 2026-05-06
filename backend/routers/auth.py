@@ -5,7 +5,8 @@ Verifies Bearer tokens and attaches user_id, email, role to request.state.
 import logging
 from typing import List
 
-from fastapi import Request, HTTPException
+from fastapi import Request
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 import google.auth.transport.requests
@@ -23,6 +24,10 @@ FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "")
 class AuthMiddleware(BaseHTTPMiddleware):
     """Verifies Firebase JWT tokens on all requests except exempt paths."""
 
+    @staticmethod
+    def _unauthorized(detail: str) -> JSONResponse:
+        return JSONResponse(status_code=401, content={"detail": detail})
+
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
 
@@ -37,9 +42,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Extract Bearer token
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
-            raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+            return self._unauthorized("Missing or invalid Authorization header")
 
-        token = auth_header.replace("Bearer ", "")
+        token = auth_header.removeprefix("Bearer ").strip()
+        if not token:
+            return self._unauthorized("Missing or invalid Authorization header")
 
         try:
             # Verify Firebase ID token
@@ -57,6 +64,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         except Exception as e:
             logger.warning(f"Token verification failed: {e}")
-            raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
+            return self._unauthorized(f"Invalid token: {str(e)}")
 
         return await call_next(request)

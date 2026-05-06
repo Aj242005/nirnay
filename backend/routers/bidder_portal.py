@@ -15,6 +15,7 @@ from db.database import get_db
 from db.models import (
     Document, EvaluationVerdict, BidderOverallVerdict,
     TenderCriterion, DocumentAuthenticity, BidderExtractedValue,
+    ProposalStatus, TenderWorkflow,
 )
 from routers.rbac import require_role, require_permission
 
@@ -33,7 +34,7 @@ def _bidder_id(request: Request) -> str:
 async def list_available_tenders(
     request: Request,
     db: Session = Depends(get_db),
-    _role: str = Depends(require_role("bidder")),
+    _role: str = Depends(require_permission("tenders:read")),
 ):
     """List all tenders open for bidding."""
     tender_ids = (
@@ -50,6 +51,10 @@ async def list_available_tenders(
         ).first()
         if not tender_doc:
             continue
+        workflow = db.query(TenderWorkflow).filter(TenderWorkflow.tender_id == t_id).first()
+        lifecycle_status = workflow.lifecycle_status if workflow else ("active" if tender_doc.status == "extracted" else "processing")
+        if lifecycle_status != "active":
+            continue
 
         criteria_count = db.query(func.count(TenderCriterion.criterion_id)).filter(
             TenderCriterion.tender_id == t_id
@@ -59,6 +64,7 @@ async def list_available_tenders(
             "tender_id": t_id,
             "department_id": tender_doc.department_id,
             "status": tender_doc.status,
+            "lifecycle_status": lifecycle_status,
             "criteria_count": criteria_count,
             "created_at": str(tender_doc.created_at) if tender_doc.created_at else None,
         })
@@ -71,7 +77,7 @@ async def list_available_tenders(
 async def list_my_submissions(
     request: Request,
     db: Session = Depends(get_db),
-    _role: str = Depends(require_role("bidder")),
+    _role: str = Depends(require_permission("submissions:read")),
 ):
     """List all documents submitted by the current bidder."""
     bid = _bidder_id(request)
@@ -80,14 +86,28 @@ async def list_my_submissions(
         Document.doc_type == "bidder",
     ).order_by(Document.created_at.desc()).all()
 
+    proposals = db.query(ProposalStatus).filter(ProposalStatus.bidder_id == bid).all()
+    proposal_by_tender = {p.tender_id: p for p in proposals}
+
     return {
         "bidder_id": bid,
+        "proposals": [
+            {
+                "tender_id": p.tender_id,
+                "bidder_id": p.bidder_id,
+                "status": p.status,
+                "document_count": p.document_count,
+                "updated_at": str(p.updated_at) if p.updated_at else None,
+            }
+            for p in proposals
+        ],
         "submissions": [
             {
                 "id": d.id,
                 "tender_id": d.tender_id,
                 "original_filename": d.original_filename,
                 "status": d.status,
+                "proposal_status": proposal_by_tender.get(d.tender_id).status if proposal_by_tender.get(d.tender_id) else "pending",
                 "file_size_bytes": d.file_size_bytes,
                 "created_at": str(d.created_at) if d.created_at else None,
             }
@@ -101,7 +121,7 @@ async def get_submission_for_tender(
     tender_id: str,
     request: Request,
     db: Session = Depends(get_db),
-    _role: str = Depends(require_role("bidder")),
+    _role: str = Depends(require_permission("submissions:read")),
 ):
     """Get bidder's documents for a specific tender."""
     bid = _bidder_id(request)
@@ -134,7 +154,7 @@ async def get_my_verdicts(
     tender_id: str,
     request: Request,
     db: Session = Depends(get_db),
-    _role: str = Depends(require_role("bidder")),
+    _role: str = Depends(require_permission("verdicts:read")),
 ):
     """Get evaluation verdicts for the current bidder on a specific tender."""
     bid = _bidder_id(request)
@@ -146,17 +166,26 @@ async def get_my_verdicts(
     ).first()
 
     if not overall:
-        return {"tender_id": tender_id, "bidder_id": bid, "status": "pending", "verdicts": []}
+        proposal = db.query(ProposalStatus).filter(
+            ProposalStatus.tender_id == tender_id,
+            ProposalStatus.bidder_id == bid,
+        ).first()
+        return {"tender_id": tender_id, "bidder_id": bid, "status": proposal.status if proposal else "pending", "verdicts": []}
 
     criterion_verdicts = db.query(EvaluationVerdict).filter(
         EvaluationVerdict.tender_id == tender_id,
         EvaluationVerdict.bidder_id == bid,
         EvaluationVerdict.supersedes_verdict_id.is_(None),
     ).all()
+    proposal = db.query(ProposalStatus).filter(
+        ProposalStatus.tender_id == tender_id,
+        ProposalStatus.bidder_id == bid,
+    ).first()
 
     return {
         "tender_id": tender_id,
         "bidder_id": bid,
+        "status": proposal.status if proposal else "evaluated",
         "overall_verdict": overall.overall_verdict,
         "failing_criteria": overall.failing_criteria,
         "manual_review_criteria": overall.manual_review_criteria,
@@ -180,7 +209,7 @@ async def get_my_verdicts(
 async def get_tender_criteria(
     tender_id: str,
     db: Session = Depends(get_db),
-    _role: str = Depends(require_role("bidder")),
+    _role: str = Depends(require_permission("tenders:read")),
 ):
     """View tender criteria so a bidder knows what to submit."""
     criteria = db.query(TenderCriterion).filter(
@@ -209,7 +238,7 @@ async def get_my_document_authenticity(
     document_id: str,
     request: Request,
     db: Session = Depends(get_db),
-    _role: str = Depends(require_role("bidder")),
+    _role: str = Depends(require_permission("documents:read")),
 ):
     """Get authenticity score for one of the bidder's own documents."""
     bid = _bidder_id(request)
@@ -241,7 +270,7 @@ async def get_my_document_authenticity(
 async def bidder_dashboard(
     request: Request,
     db: Session = Depends(get_db),
-    _role: str = Depends(require_role("bidder")),
+    _role: str = Depends(require_permission("profile:read")),
 ):
     """Quick summary for the bidder landing page."""
     bid = _bidder_id(request)
@@ -254,14 +283,11 @@ async def bidder_dashboard(
         Document.bidder_id == bid, Document.doc_type == "bidder"
     ).scalar() or 0
 
-    verdicts = db.query(BidderOverallVerdict).filter(
-        BidderOverallVerdict.bidder_id == bid,
-        BidderOverallVerdict.supersedes_id.is_(None),
-    ).all()
+    proposals = db.query(ProposalStatus).filter(ProposalStatus.bidder_id == bid).all()
 
-    eligible_count = sum(1 for v in verdicts if v.overall_verdict == "ELIGIBLE")
-    rejected_count = sum(1 for v in verdicts if v.overall_verdict == "NOT_ELIGIBLE")
-    review_count = sum(1 for v in verdicts if v.overall_verdict == "MANUAL_REVIEW")
+    eligible_count = sum(1 for p in proposals if p.status == "accepted")
+    rejected_count = sum(1 for p in proposals if p.status == "rejected")
+    review_count = sum(1 for p in proposals if p.status in ("pending", "under_evaluation", "requires_human_review", "evaluated"))
 
     return {
         "bidder_id": bid,

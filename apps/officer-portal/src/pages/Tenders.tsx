@@ -19,6 +19,14 @@ const statusColors: Record<string, string> = {
   error: 'destructive',
 };
 
+const lifecycleColors: Record<string, string> = {
+  active: 'success',
+  inactive: 'secondary',
+  completed: 'secondary',
+  processing: 'warning',
+  error: 'destructive',
+};
+
 const TendersPage: React.FC = () => {
   const [tenders, setTenders] = useState<Tender[]>([]);
   const [search, setSearch] = useState('');
@@ -31,6 +39,12 @@ const TendersPage: React.FC = () => {
       .catch(() => setTenders([]))
       .finally(() => setLoading(false));
   }, []);
+
+  const setTenderLifecycle = async (tenderId: string, status: 'active' | 'inactive') => {
+    await api.patch(`/dashboard/tenders/${tenderId}/status`, { status });
+    const res = await api.get('/dashboard/tenders');
+    setTenders(res.data.tenders || []);
+  };
 
   const filtered = tenders.filter((t) =>
     t.tender_id.toLowerCase().includes(search.toLowerCase()) ||
@@ -103,6 +117,21 @@ const TendersPage: React.FC = () => {
                     <Badge variant={(statusColors[t.status] || 'default') as any}>
                       {t.status.replace(/_/g, ' ')}
                     </Badge>
+                    <Badge variant={(lifecycleColors[t.lifecycle_status || 'processing'] || 'default') as any}>
+                      {(t.lifecycle_status || 'processing').replace(/_/g, ' ')}
+                    </Badge>
+                    {(t.lifecycle_status === 'active' || t.lifecycle_status === 'inactive') && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setTenderLifecycle(t.tender_id, t.lifecycle_status === 'active' ? 'inactive' : 'active');
+                        }}
+                      >
+                        Set {t.lifecycle_status === 'active' ? 'Inactive' : 'Active'}
+                      </Button>
+                    )}
                     <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
                   </div>
                 </CardContent>

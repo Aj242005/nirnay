@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -6,7 +7,14 @@ import { Scale, ArrowRight, FileText } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const LoginPage: React.FC = () => {
-  const { signInWithGoogle, loading } = useAuth();
+  const { signInWithGoogle, loading, user, token } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (user && token) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [navigate, token, user]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">

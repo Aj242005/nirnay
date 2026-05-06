@@ -20,7 +20,7 @@ RESOURCE_PERMISSIONS = {
     # Officer-side resources
     "tenders:create":        ["officer", "senior_officer", "admin"],
     "tenders:read":          ["officer", "senior_officer", "admin", "bidder"],
-    "tenders:update":        ["senior_officer", "admin"],
+    "tenders:update":        ["officer", "senior_officer", "admin"],
     "tenders:delete":        ["senior_officer", "admin"],
     "documents:create":      ["officer", "senior_officer", "admin", "bidder"],
     "documents:read":        ["officer", "senior_officer", "admin", "bidder"],
