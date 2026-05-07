@@ -164,7 +164,12 @@ class GeminiClient:
                         break
 
                 except APIStatusError as e:
-                    if e.status_code in (413, 503, 502, 500) and attempt < max_retries_per_model:
+                    if e.status_code == 413:
+                        # Payload too large for this model's TPM — skip immediately, no retry
+                        logger.warning(f"Prompt too large for {current_model} (413), skipping to next model")
+                        last_error = e
+                        break
+                    elif e.status_code in (503, 502, 500) and attempt < max_retries_per_model:
                         delay = base_delay * (1.5 ** attempt)
                         logger.warning(f"Groq API error {e.status_code} on {current_model} attempt {attempt+1}, retrying in {delay:.1f}s")
                         time.sleep(delay)
