@@ -35,10 +35,15 @@ MODEL_MAP = {
 }
 
 # Fallback chain — tried in order when primary hits rate/token limits
-# llama-3.1-8b-instant: 20K TPM, good for small bidder docs
-# gemma2-9b-it: 14.4M TPD, 8K context — last resort
+# All models below have 128K+ context windows unless noted
+# llama-3.1-70b-versatile : 131K ctx, separate TPD quota from 3.3-70b
+# deepseek-r1-distill-llama-70b : 128K ctx, reasoning model
+# llama-3.1-8b-instant     : 131K ctx, very high TPM (smaller model)
+# gemma2-9b-it              : 8K ctx — last resort for small payloads only
 FALLBACK_MODELS = [
     "llama-3.3-70b-versatile",
+    "llama-3.1-70b-versatile",
+    "deepseek-r1-distill-llama-70b",
     "llama-3.1-8b-instant",
     "gemma2-9b-it",
 ]
