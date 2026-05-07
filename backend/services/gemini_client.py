@@ -35,12 +35,11 @@ MODEL_MAP = {
 }
 
 # Fallback chain — tried in order when primary hits rate/token limits
-# mixtral-8x7b: 5M TPD, 32K context — enough for bidder docs & most tenders
-# llama3-70b-8192: older 70b alias, separate quota pool from llama-3.3-70b-versatile
-# gemma2-9b: 14.4M TPD, 8K context — last resort for small payloads only
+# llama-3.1-8b-instant: 20K TPM, good for small bidder docs
+# gemma2-9b-it: 14.4M TPD, 8K context — last resort
 FALLBACK_MODELS = [
     "llama-3.3-70b-versatile",
-    "llama3-70b-8192",
+    "llama-3.1-8b-instant",
     "gemma2-9b-it",
 ]
 
