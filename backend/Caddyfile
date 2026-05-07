@@ -22,15 +22,9 @@ YOUR_SUBDOMAIN.duckdns.org {
         }
     }
 
-    # ── CORS headers (Vercel frontend + any origin during dev) ────────────────
-    header {
-        Access-Control-Allow-Origin  *
-        Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-        Access-Control-Allow-Headers "Authorization, Content-Type, Accept"
-        Access-Control-Max-Age       86400
-    }
-
-    # Handle CORS pre-flight OPTIONS requests
+    # ── CORS pre-flight OPTIONS — let FastAPI handle CORS headers ─────────────
+    # (FastAPI CORSMiddleware already sets Access-Control-Allow-Origin,
+    #  adding it here too causes duplicate "*, *" which browsers reject)
     @options {
         method OPTIONS
     }
