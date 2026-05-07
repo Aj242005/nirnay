@@ -35,16 +35,16 @@ MODEL_MAP = {
 }
 
 # Fallback chain — tried in order when primary hits rate/token limits
-# All models verified active from Groq API list (2026-05-07)
-# Context windows: all 131K except gemma2-9b-it (8K, last resort)
+# All verified active (2026-05-07), all 131K context windows
+# gpt-oss-120b/20b excluded: only 8K TPM — too small for 11K+ token requests
 FALLBACK_MODELS = [
-    "llama-3.3-70b-versatile",          # primary  – 131K ctx, 100K TPD
-    "openai/gpt-oss-120b",              # 131K ctx, 65K max output
-    "openai/gpt-oss-20b",              # 131K ctx, 65K max output
+    "llama-3.3-70b-versatile",                    # primary – 131K ctx
+    "qwen/qwen3-32b",                              # 131K ctx, 40K max output
     "meta-llama/llama-4-scout-17b-16e-instruct",  # 131K ctx
-    "qwen/qwen3-32b",                   # 131K ctx
-    "llama-3.1-8b-instant",             # 131K ctx, high TPM
-    "gemma2-9b-it",                     # 8K ctx — absolute last resort
+    "groq/compound",                               # 131K ctx, Groq routing
+    "groq/compound-mini",                          # 131K ctx
+    "llama-3.1-8b-instant",                        # 131K ctx, very high TPM
+    "gemma2-9b-it",                                # 8K ctx — absolute last resort
 ]
 
 
